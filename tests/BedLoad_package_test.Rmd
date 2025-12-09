@@ -1,0 +1,213 @@
+---
+title: "BedLoad package test"
+author: "Nastaran Nematollahi"
+date: "2024-06-10"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Import Libraries
+```{r}
+library(bedload)
+library(dplyr)
+```
+## Compare transport functions
+
+**Purpose**: This function compares the transport functions for a specified grain size and channel gradient over a reasonable range of shear stress values using the default values for all functions. The function output is a plot, as can be seen in the following code chunk. However, some intermediate variables are also determined to cross-check with the Excel output and ensure that everything is working correctly.
+
+**Note**: The function produced the expected result and plot.
+
+```{r}
+d <- 0.075
+s <- 0.02
+d84 <- 0.15
+g <- 9.81
+rho <- 1000
+rho_s <- 2650
+
+Gs <- (rho_s - rho) / rho
+Gs
+
+
+tau_critical <- 0.05 * g * (rho_s - rho) * d
+tau_critical
+
+
+tau_min <- 0.25 * tau_critical
+tau_max <- 5 * tau_critical
+tau_range <- seq(tau_min, tau_max, length.out = 200)
+head(tau_range)
+tail(tau_range) 
+
+
+R_range <- tau_range / (g * rho * s)
+#head(R_range) 
+#tail(R_range) 
+
+# intermediate variable
+t_star_values <- sapply(tau_range, FUN = t_star, d)
+d_star <- d_star(d)
+#d_star
+t_crit_soul <- t_crit_soul(d)
+#t_crit_soul
+t_crit_vr <- t_crit_vr(d)
+#t_crit_vr
+t_sm_rp <- (5 * s + 0.06)*(d84 / d)^(4.4*sqrt(s) - 1.5)
+#t_sm_rp
+t_sm <- 1.5 * s^0.75
+#t_sm
+
+u_ferg_values <- sapply(R_range, FUN = u_ferg, s, d84)
+head(u_ferg_values)
+
+
+qs_mpm <- sapply(R_range, FUN = mpm, s, d)
+qs_wp <- sapply(R_range, FUN = wp, s, d)
+qs_yln <- sapply(R_range, FUN = yln, s, d, t_crit_soul)
+qs_ec <- sapply(R_range, FUN = ec, s, d, d84 )
+qs_eb <- sapply(R_range, FUN = eb, s, d)
+qs_vr <- sapply(R_range, FUN = vr, s, d)
+qs_rk <- sapply(R_range, FUN = rk, s, d)
+filt <- qs_mpm > 0
+
+output <- data.frame(
+  tau_range = tau_range,
+  R_range = R_range,
+  t_star = t_star_values,
+  U = u_ferg_values ,
+  qs_mpm = qs_mpm,
+  qs_wp = qs_wp,
+  qs_yln = qs_yln,
+  qs_ec = qs_ec,
+  qs_eb = qs_eb,
+  qs_vr = qs_vr,
+  qs_rk = qs_rk,
+  filt = filt
+)
+
+
+
+filtered_output <- output[filt, ]
+
+head(filtered_output)
+
+
+```
+
+
+```{r}
+
+compare_fun(d, s, d84, g, rho, rho_s)
+
+```
+## load_section 
+
+```{r}
+xs_data <- "C:/Users/nnematollahi/OneDrive - BGC Engineering Inc/Project02_bedloadpackage/bedload_r_package/bedload/tests/R_input/cross_section_1.csv"
+
+# load section
+cross_sc <- load_section(xs_data, dx = NA , rev = FALSE, trim = TRUE, mkplt = TRUE)
+
+
+
+head(cross_sc)
+#cross_sc_selected <- cross_sc %>% select(dist, z)
+#head(cross_sc_selected)
+
+```
+## calc_depths
+
+```{r}
+depths <- calc_depths(cross_sc, 140, mkplt = TRUE)
+#depths
+```
+```{r}
+y_range <- seq(0.1, 1, 0.05)  #make calculations for a range of depths for each section
+#y_range
+dx <- (c(0,diff(cross_sc$dist)) + c(diff(cross_sc$dist),0) ) /2
+#dx
+px <- sqrt(diff(cross_sc$dist)^2 + diff(cross_sc$Z)^2)
+#px
+dp <- (c(0, px) + c(px, 0)) / 2
+#dp
+
+invert <- min(cross_sc$Z, na.rm = T)
+#invert
+
+thalweg <- which(cross_sc$Z == min(cross_sc$Z, na.rm = T))[1]
+#thalweg
+
+xs_hyd <- data.frame(flow = array(NA, length(y_range)),
+                     area = array(NA, length(y_range)),
+                     width = array(NA, length(y_range)),
+                     perimeter = array(NA, length(y_range)),
+                     velocity = array(NA, length(y_range)),
+                     transport = array(NA, length(y_range)),
+                     wse = array(NA, length(y_range)),
+                     t_star = array(NA, length(y_range)))
+
+
+wse <- invert + y_range[1]
+#wse
+depths <- calc_depths(cross_sc, 126)
+#depths
+
+
+
+```
+
+
+```{r}
+
+# Define the parameters
+S <- 0.01  # Example gradient, change as needed
+d <- 0.05  # Example median bed sediment grain diameter, change as needed
+d84 <- 2 * d  # 84th percentile diameter of bed sediment
+
+# Apply the estimate_hydraulics function
+cross_sc_hydraulics <- estimate_hydraulics(cross_sc, S, d, d84, ymax = 1, dx = 0.05, fun = "eb")
+head(cross_sc_hydraulics)
+
+
+#cross_sc_hydraulics$R <- cross_sc_hydraulics$area/ cross_sc_hydraulics$perimeter
+#cross_sc_hydraulics
+```
+
+
+## estimate_capacity
+
+
+```{r}
+hydrograph <- read.csv("C:/Users/nnematollahi/OneDrive - BGC Engineering Inc/Project02_bedloadpackage/bedload_r_package/bedload/tests/R_input/hydrograph.csv")
+
+t <- hydrograph$time_s
+Q <- hydrograph$discharge
+
+# Parameters for the estimate_capacity function
+tc <- 0.045
+
+# Estimate transport capacity
+estimate_capacity <- estimate_capacity(cross_sc_hydraulics, Q, t, tc, mkplt = TRUE)
+estimate_capacity
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
