@@ -312,11 +312,15 @@ ec <- function(R,
   dcrit <- t_crit * Gs * d / S #depth at which transport is initiated
   Res <- u_ferg(dcrit, S, d84, a1, a2, g) / sqrt(g * dcrit * S) #reference resistance
   om_crit <- Res * t_crit^(3/2)  #reference dimensionless stream power
-  E_star <- (0.92 - 0.25 * sqrt(om_crit / omega_s))^9  #function fit by Eaton and Church 2011
-  q_star = E_star * omega_s  #translate efficiency to dimensionless bedload
-  if(q_star < 0.00001){
-    q_star <- 0  #return 0 for in the event that q_star is less than 0.00001
+  if(omega_s > 0){
+    E_star <- (0.92 - 0.25 * sqrt(om_crit / omega_s))^9  #function fit by Eaton and Church 2011
+  }else{
+    E_star <- 0
   }
+  q_star = E_star * omega_s  #translate efficiency to dimensionless bedload
+   if(q_star < 0){
+     q_star <- 0  #return 0 for in the event that q_star is less than 0.00001
+   }
   return(q_star)
 }
 
